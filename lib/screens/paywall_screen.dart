@@ -82,14 +82,14 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
         title: const Text('Go Premium'),
       ),
       body: ListView(
-        padding: const EdgeInsets.all(24),
+        padding: AppTheme.responsivePadding(context),
         children: [
           const Icon(
             Icons.star,
             size: 80,
             color: AppTheme.joyfulColor,
           ),
-          const SizedBox(height: 24),
+          SizedBox(height: AppTheme.spacingL),
           const Text(
             'Premium: AI Dream Commentator',
             textAlign: TextAlign.center,
@@ -99,7 +99,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
               color: AppTheme.textPrimary,
             ),
           ),
-          const SizedBox(height: 16),
+          SizedBox(height: AppTheme.spacingM),
           const Text(
             'Get AI-powered symbolic interpretations of your dreams',
             textAlign: TextAlign.center,
@@ -108,7 +108,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
               color: AppTheme.textSecondary,
             ),
           ),
-          const SizedBox(height: 32),
+          SizedBox(height: AppTheme.spacingXL),
           if (product != null)
             Card(
               child: Padding(
@@ -123,7 +123,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                         color: AppTheme.textPrimary,
                       ),
                     ),
-                    const SizedBox(height: 8),
+                    SizedBox(height: AppTheme.spacingS),
                     Text(
                       product.description,
                       style: const TextStyle(
@@ -131,7 +131,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                       ),
                       textAlign: TextAlign.center,
                     ),
-                    const SizedBox(height: 16),
+                    SizedBox(height: AppTheme.spacingM),
                     Text(
                       product.price,
                       style: const TextStyle(
@@ -144,7 +144,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                 ),
               ),
             ),
-          const SizedBox(height: 32),
+          SizedBox(height: AppTheme.spacingXL),
           if (isPremium)
             const Card(
               child: Padding(
@@ -187,7 +187,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                       ),
                     ),
             ),
-            const SizedBox(height: 16),
+            SizedBox(height: AppTheme.spacingM),
             TextButton(
               onPressed: _isRestoring ? null : _restorePurchases,
               child: _isRestoring

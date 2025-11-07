@@ -20,14 +20,32 @@ class RatingPicker extends StatefulWidget {
 }
 
 class _RatingPickerState extends State<RatingPicker> {
+  Color _getRatingColor(int rating) {
+    switch (rating) {
+      case 1:
+        return AppTheme.disturbingRed;
+      case 2:
+        return AppTheme.anxiousOrange;
+      case 3:
+        return AppTheme.accentSecondary;
+      case 4:
+        return AppTheme.joyfulAmber;
+      case 5:
+        return AppTheme.accentPrimary;
+      default:
+        return AppTheme.accentSecondary;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final ratingColor = _getRatingColor(widget.rating);
     return ClipRRect(
         borderRadius: BorderRadius.circular(20),
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25), // Stronger liquid glass blur
           child: Container(
-            padding: const EdgeInsets.all(20),
+            padding: EdgeInsets.all(AppTheme.spacingM + 4),
             decoration: AppTheme.glassContainer(borderRadius: 20),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -37,13 +55,22 @@ class _RatingPickerState extends State<RatingPicker> {
                   Container(
                     padding: const EdgeInsets.all(6),
                     decoration: BoxDecoration(
-                      color: AppTheme.dreamPurple.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(8),
+                      gradient: LinearGradient(
+                        colors: [
+                          ratingColor.withOpacity(0.18),
+                          ratingColor.withOpacity(0.1),
+                        ],
+                      ),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: ratingColor.withOpacity(0.25),
+                        width: 1,
+                      ),
                     ),
-                    child: const Icon(
+                    child: Icon(
                       Icons.star_rounded, // Apple-style rounded
-                      color: AppTheme.joyfulAmber,
-                      size: 22,
+                      color: ratingColor,
+                      size: 20,
                     ),
                   ),
                   const SizedBox(width: 10),
@@ -58,7 +85,7 @@ class _RatingPickerState extends State<RatingPicker> {
                   ),
                 ],
               ),
-              const SizedBox(height: 20),
+              SizedBox(height: AppTheme.spacingM),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceAround,
                 children: List.generate(5, (index) {
@@ -80,23 +107,23 @@ class _RatingPickerState extends State<RatingPicker> {
                         gradient: isSelected
                             ? LinearGradient(
                                 colors: [
-                                  AppTheme.joyfulAmber.withOpacity(0.3),
-                                  AppTheme.dreamPurple.withOpacity(0.2),
+                                  ratingColor.withOpacity(0.2),
+                                  ratingColor.withOpacity(0.1),
                                 ],
                               )
                             : null,
-                        borderRadius: BorderRadius.circular(16),
+                        borderRadius: BorderRadius.circular(18),
                         border: Border.all(
                           color: isSelected
-                              ? AppTheme.joyfulAmber.withOpacity(0.5)
+                              ? ratingColor.withOpacity(0.3)
                               : AppTheme.glassBorder,
-                          width: isSelected ? 2 : 1,
+                          width: 1,
                         ),
                         boxShadow: isSelected
                             ? [
                                 BoxShadow(
-                                  color: AppTheme.joyfulAmber.withOpacity(0.4),
-                                  blurRadius: 20,
+                                  color: ratingColor.withOpacity(0.2),
+                                  blurRadius: 15,
                                   spreadRadius: -2,
                                 ),
                               ]

@@ -388,7 +388,7 @@ class GlassInputField extends StatelessWidget {
             ),
             labelStyle: AppTheme.subheadline(context),
             filled: true,
-            fillColor: AppTheme.glassOverlay.withOpacity(0.15),
+            fillColor: Colors.transparent,
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(AppTheme.radiusM),
               borderSide: BorderSide.none,
@@ -396,15 +396,15 @@ class GlassInputField extends StatelessWidget {
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(AppTheme.radiusM),
               borderSide: BorderSide(
-                color: AppTheme.glassBorder.withOpacity(0.2),
+                color: AppTheme.glassBorder.withOpacity(0.15),
                 width: 1,
               ),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(AppTheme.radiusM),
               borderSide: BorderSide(
-                color: AppTheme.accentPrimary.withOpacity(0.4),
-                width: 1.5,
+                color: AppTheme.accentPrimary.withOpacity(0.25),
+                width: 1,
               ),
             ),
             contentPadding: EdgeInsets.all(AppTheme.spacingM),

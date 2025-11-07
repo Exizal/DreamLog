@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:ui';
-import '../services/notification_service.dart';
 import '../theme/app_theme.dart';
+import '../services/notification_service.dart';
+import '../widgets/liquid_glass_time_picker.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -13,8 +14,9 @@ class SettingsScreen extends ConsumerStatefulWidget {
 }
 
 class _SettingsScreenState extends ConsumerState<SettingsScreen> with SingleTickerProviderStateMixin {
-  TimeOfDay? _notificationTime;
   late AnimationController _fadeController;
+  bool _notificationsEnabled = false;
+  TimeOfDay? _notificationTime;
 
   @override
   void initState() {
@@ -24,7 +26,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with SingleTick
       vsync: this,
     );
     _fadeController.forward();
-    _loadNotificationTime();
+    _loadNotificationSettings();
   }
 
   @override
@@ -33,46 +35,87 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with SingleTick
     super.dispose();
   }
 
-  Future<void> _loadNotificationTime() async {
+  Future<void> _loadNotificationSettings() async {
     final time = await NotificationService.getNotificationTime();
     if (mounted) {
-      setState(() => _notificationTime = time);
+      setState(() {
+        _notificationTime = time;
+        _notificationsEnabled = time != null;
+      });
     }
   }
 
   Future<void> _selectNotificationTime() async {
-    final time = await showTimePicker(
+    final currentTime = _notificationTime ?? const TimeOfDay(hour: 8, minute: 0);
+    TimeOfDay? selectedTime = currentTime;
+
+    final result = await showDialog<TimeOfDay>(
       context: context,
-      initialTime: _notificationTime ?? const TimeOfDay(hour: 8, minute: 0),
-      builder: (context, child) {
-        return Theme(
-          data: Theme.of(context).copyWith(
-            colorScheme: const ColorScheme.dark(
-              primary: AppTheme.deepViolet,
-              onPrimary: AppTheme.starLight,
-              surface: AppTheme.nebulaPurple,
-              onSurface: AppTheme.starLight,
-            ),
-          ),
-          child: child!,
-        );
-      },
+      barrierColor: Colors.black.withOpacity(0.7),
+      builder: (context) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: AppTheme.responsiveHorizontalPadding(context),
+        child: StatefulBuilder(
+          builder: (context, setDialogState) {
+            return LiquidGlassTimePicker(
+              initialTime: currentTime,
+              onTimeChanged: (time) {
+                selectedTime = time;
+                setDialogState(() {});
+              },
+            );
+          },
+        ),
+      ),
     );
 
-    if (time != null && mounted) {
-      await NotificationService.scheduleDailyNotification(time);
-      setState(() => _notificationTime = time);
-      _showGlassSnackBar('Notification time updated to ${time.format(context)}');
+    final finalTime = result ?? selectedTime;
+    if (finalTime != null && mounted) {
+      await NotificationService.scheduleDailyNotification(finalTime);
+      setState(() {
+        _notificationTime = finalTime;
+        _notificationsEnabled = true;
+      });
+      _showSnackBar('Notification set for ${finalTime.format(context)}');
     }
   }
 
-  void _showGlassSnackBar(String message) {
+  Future<void> _toggleNotifications(bool enabled) async {
+    if (enabled) {
+      // Request permissions first
+      final granted = await NotificationService.requestPermissions();
+      if (!granted) {
+        if (mounted) {
+          _showSnackBar('Notification permissions are required');
+        }
+        setState(() => _notificationsEnabled = false);
+        return;
+      }
+
+      // If time is already set, schedule it
+      if (_notificationTime != null) {
+        await NotificationService.scheduleDailyNotification(_notificationTime!);
+      } else {
+        // Set default time and schedule
+        const defaultTime = TimeOfDay(hour: 8, minute: 0);
+        await NotificationService.scheduleDailyNotification(defaultTime);
+        setState(() => _notificationTime = defaultTime);
+      }
+    } else {
+      // Cancel all notifications
+      await NotificationService.cancelAllNotifications();
+      setState(() => _notificationsEnabled = false);
+    }
+  }
+
+  void _showSnackBar(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
         behavior: SnackBarBehavior.floating,
-        backgroundColor: AppTheme.nebulaPurple.withOpacity(0.95),
+        backgroundColor: AppTheme.backgroundTertiary.withOpacity(0.95),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        margin: const EdgeInsets.all(16),
       ),
     );
   }
@@ -98,8 +141,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with SingleTick
           child: FadeTransition(
             opacity: _fadeController,
             child: ListView(
-              padding: const EdgeInsets.all(20),
+              padding: AppTheme.responsivePadding(context),
               children: [
+                SizedBox(height: AppTheme.spacingM),
+                
                 // Notifications Glass Card
                 _buildGlassCard(
                   icon: Icons.notifications_outlined,
@@ -107,19 +152,44 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with SingleTick
                   title: 'Notifications',
                   child: Column(
                     children: [
+                      // Enable/Disable Toggle
                       _buildSettingTile(
-                        icon: Icons.access_time_rounded,
+                        icon: Icons.notifications_active_rounded,
                         title: 'Daily Reminder',
-                        subtitle: _notificationTime != null
-                            ? 'Set for ${_notificationTime!.format(context)}'
-                            : 'Not set',
-                        onTap: _selectNotificationTime,
+                        subtitle: _notificationsEnabled
+                            ? (_notificationTime != null 
+                                ? 'Set for ${_notificationTime!.format(context)}'
+                                : 'Enabled')
+                            : 'Disabled',
+                        trailing: Switch(
+                          value: _notificationsEnabled,
+                          onChanged: _toggleNotifications,
+                          activeColor: AppTheme.accentPrimary,
+                        ),
+                        onTap: null,
                       ),
+                      if (_notificationsEnabled) ...[
+                        const SizedBox(height: 12),
+                        Divider(
+                          color: AppTheme.glassBorder.withOpacity(0.3),
+                          height: 1,
+                        ),
+                        const SizedBox(height: 12),
+                        // Time Picker Button
+                        _buildSettingTile(
+                          icon: Icons.access_time_rounded,
+                          title: 'Set Time',
+                          subtitle: _notificationTime != null
+                              ? _notificationTime!.format(context)
+                              : 'Tap to set',
+                          onTap: _selectNotificationTime,
+                        ),
+                      ],
                     ],
                   ),
                 ),
                 
-                const SizedBox(height: 20),
+                SizedBox(height: AppTheme.spacingM),
                 
                 // About Glass Card
                 _buildGlassCard(
@@ -282,22 +352,20 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with SingleTick
     required IconData icon,
     required String title,
     required String subtitle,
-    required VoidCallback onTap,
+    Widget? trailing,
+    VoidCallback? onTap,
   }) {
     return Material(
       color: Colors.transparent,
-        child: InkWell(
-          onTap: () {
-            HapticFeedback.selectionClick(); // Apple-style haptic
-            onTap();
-          },
-          borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
         child: Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: AppTheme.glassOverlay,
+            color: AppTheme.glassOverlay.withOpacity(0.3),
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: AppTheme.glassBorder, width: 1),
+            border: Border.all(color: AppTheme.glassBorder.withOpacity(0.3), width: 1),
           ),
           child: Row(
             children: [
@@ -337,14 +405,17 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> with SingleTick
                   ],
                 ),
               ),
-              Icon(
-                Icons.chevron_right_rounded,
-                color: AppTheme.cosmicGray.withOpacity(0.5),
-              ),
+              if (trailing != null) trailing,
+              if (onTap != null && trailing == null)
+                Icon(
+                  Icons.chevron_right_rounded,
+                  color: AppTheme.cosmicGray.withOpacity(0.5),
+                ),
             ],
           ),
         ),
       ),
     );
   }
+
 }

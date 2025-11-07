@@ -178,8 +178,8 @@ class _MoodPickerState extends State<MoodPicker> {
                                   begin: Alignment.topLeft,
                                   end: Alignment.bottomRight,
                                   colors: [
-                                    color.withOpacity(0.3),
-                                    color.withOpacity(0.15),
+                                    color.withOpacity(0.2),
+                                    color.withOpacity(0.1),
                                   ],
                                 )
                               : null,
@@ -187,28 +187,28 @@ class _MoodPickerState extends State<MoodPicker> {
                           borderRadius: BorderRadius.circular(24),
                           border: Border.all(
                             color: isSelected
-                                ? color.withOpacity(0.6)
+                                ? color.withOpacity(0.3)
                                 : AppTheme.glassBorder,
-                            width: isSelected ? 1.5 : 1.0,
+                            width: 1,
                           ),
                           boxShadow: isSelected
                               ? [
                                   BoxShadow(
-                                    color: color.withOpacity(0.4),
-                                    blurRadius: 25,
-                                    spreadRadius: -4,
+                                    color: color.withOpacity(0.2),
+                                    blurRadius: 18,
+                                    spreadRadius: -3,
                                   ),
                                   BoxShadow(
-                                    color: Colors.black.withOpacity(0.3),
-                                    blurRadius: 20,
-                                    offset: const Offset(0, 8),
+                                    color: Colors.black.withOpacity(0.25),
+                                    blurRadius: 15,
+                                    offset: const Offset(0, 6),
                                   ),
                                 ]
                               : [
                                   BoxShadow(
-                                    color: Colors.black.withOpacity(0.4),
-                                    blurRadius: 20,
-                                    offset: const Offset(0, 4),
+                                    color: Colors.black.withOpacity(0.3),
+                                    blurRadius: 15,
+                                    offset: const Offset(0, 3),
                                     spreadRadius: -2,
                                   ),
                                 ],
@@ -226,16 +226,16 @@ class _MoodPickerState extends State<MoodPicker> {
                                   decoration: BoxDecoration(
                                     gradient: RadialGradient(
                                       colors: [
-                                        color.withOpacity(isSelected ? 0.25 : 0.1),
-                                        color.withOpacity(isSelected ? 0.1 : 0.05),
+                                        color.withOpacity(isSelected ? 0.15 : 0.08),
+                                        color.withOpacity(isSelected ? 0.08 : 0.04),
                                       ],
                                     ),
                                     shape: BoxShape.circle,
                                     boxShadow: isSelected
                                         ? [
                                             BoxShadow(
-                                              color: color.withOpacity(0.4),
-                                              blurRadius: 16,
+                                              color: color.withOpacity(0.2),
+                                              blurRadius: 12,
                                               spreadRadius: -2,
                                             ),
                                           ]
@@ -254,16 +254,16 @@ class _MoodPickerState extends State<MoodPicker> {
                                     child: Container(
                                       padding: const EdgeInsets.all(4),
                                       decoration: BoxDecoration(
-                                        color: color.withOpacity(0.9),
+                                        color: color.withOpacity(0.6),
                                         shape: BoxShape.circle,
                                         border: Border.all(
                                           color: AppTheme.glassOverlay,
-                                          width: 1.5,
+                                          width: 1,
                                         ),
                                         boxShadow: [
                                           BoxShadow(
-                                            color: color.withOpacity(0.5),
-                                            blurRadius: 8,
+                                            color: color.withOpacity(0.3),
+                                            blurRadius: 6,
                                             spreadRadius: -1,
                                           ),
                                         ],

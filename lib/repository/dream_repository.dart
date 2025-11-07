@@ -96,16 +96,35 @@ class DreamRepository {
 
   Future<void> addDream(DreamEntry dream) async {
     try {
+      // Try to get box if not already set
       if (_dreamsBox == null || !_dreamsBox!.isOpen) {
-        await init();
+        // First try to get existing box
+        if (Hive.isBoxOpen(HiveBoxes.dreams)) {
+          _dreamsBox = Hive.box<DreamEntry>(HiveBoxes.dreams);
+        } else {
+          // If box is not open, try to open it
+          try {
+            _dreamsBox = await Hive.openBox<DreamEntry>(HiveBoxes.dreams);
+          } catch (e) {
+            // If opening fails, try init again
+            await init();
+          }
+        }
       }
-      if (_dreamsBox != null && _dreamsBox!.isOpen) {
-        // Ensure folderId is set to Dreams by default if not set
-        final dreamToSave = dream.folderId.isEmpty ? dream.copyWith(folderId: 'Dreams') : dream;
-        await _dreamsBox!.put(dreamToSave.id, dreamToSave);
-      } else {
-        throw Exception('Dream box is not initialized');
+      
+      // Verify box is open
+      if (_dreamsBox == null || !_dreamsBox!.isOpen) {
+        // Last attempt: try to get the box directly
+        if (Hive.isBoxOpen(HiveBoxes.dreams)) {
+          _dreamsBox = Hive.box<DreamEntry>(HiveBoxes.dreams);
+        } else {
+          throw Exception('Dream box is not initialized. Please restart the app.');
+        }
       }
+      
+      // Ensure folderId is set to Dreams by default if not set
+      final dreamToSave = dream.folderId.isEmpty ? dream.copyWith(folderId: 'Dreams') : dream;
+      await _dreamsBox!.put(dreamToSave.id, dreamToSave);
     } catch (e) {
       rethrow; // Re-throw to show error to user
     }

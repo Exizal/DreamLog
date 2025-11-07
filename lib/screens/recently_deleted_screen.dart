@@ -64,7 +64,10 @@ class _RecentlyDeletedScreenState extends ConsumerState<RecentlyDeletedScreen> {
                   
                   // Informational text
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: AppTheme.responsiveHorizontalPadding(context).horizontal,
+                      vertical: AppTheme.spacingM,
+                    ),
                     child: Text(
                       'Entries are available here for 30 days. After that time, entries will be permanently deleted.',
                       style: TextStyle(
@@ -77,7 +80,7 @@ class _RecentlyDeletedScreenState extends ConsumerState<RecentlyDeletedScreen> {
                   
                   // Days remaining
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    padding: AppTheme.responsiveHorizontalPadding(context),
                     child: Text(
                       '$daysRemaining Days Remaining',
                       style: const TextStyle(
@@ -88,14 +91,14 @@ class _RecentlyDeletedScreenState extends ConsumerState<RecentlyDeletedScreen> {
                     ),
                   ),
                   
-                  const SizedBox(height: 20),
+                  SizedBox(height: AppTheme.spacingM),
                   
                   // Deleted dreams list
                   Expanded(
                     child: deletedDreams.isEmpty
                         ? _buildEmptyState()
                         : ListView.builder(
-                            padding: const EdgeInsets.symmetric(horizontal: 20),
+                            padding: AppTheme.responsiveHorizontalPadding(context),
                             itemCount: deletedDreams.length,
                             itemBuilder: (context, index) {
                               final dream = deletedDreams[index];
@@ -120,7 +123,7 @@ class _RecentlyDeletedScreenState extends ConsumerState<RecentlyDeletedScreen> {
 
   Widget _buildTopBar(int daysRemaining) {
     return Padding(
-      padding: const EdgeInsets.all(20),
+      padding: AppTheme.responsivePadding(context),
       child: Row(
         children: [
           // Back button
@@ -186,7 +189,10 @@ class _RecentlyDeletedScreenState extends ConsumerState<RecentlyDeletedScreen> {
                     },
                     borderRadius: BorderRadius.circular(20),
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      padding: EdgeInsets.symmetric(
+                        horizontal: AppTheme.spacingM,
+                        vertical: AppTheme.spacingS + 4,
+                      ),
                       child: Text(
                         _isSelectMode ? 'Cancel' : 'Select',
                         style: const TextStyle(
@@ -239,7 +245,7 @@ class _RecentlyDeletedScreenState extends ConsumerState<RecentlyDeletedScreen> {
     final daysRemaining = 30 - daysSinceDeleted;
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
+      padding: EdgeInsets.only(bottom: AppTheme.spacingM),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(24),
         child: BackdropFilter(
@@ -250,22 +256,23 @@ class _RecentlyDeletedScreenState extends ConsumerState<RecentlyDeletedScreen> {
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: [
-                  AppTheme.nebulaPurple.withOpacity(0.3),
-                  AppTheme.nebulaPurple.withOpacity(0.15),
+                  AppTheme.nebulaPurple.withOpacity(0.2),
+                  AppTheme.nebulaPurple.withOpacity(0.1),
                 ],
               ),
               borderRadius: BorderRadius.circular(24),
               border: Border.all(
                 color: isSelected 
-                    ? AppTheme.dreamPurple.withOpacity(0.6)
+                    ? AppTheme.dreamPurple.withOpacity(0.3)
                     : AppTheme.glassBorder,
-                width: isSelected ? 2 : 1,
+                width: 1,
               ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.2),
-                  blurRadius: 20,
-                  offset: const Offset(0, 10),
+                  color: Colors.black.withOpacity(0.3),
+                  blurRadius: 15,
+                  offset: const Offset(0, 6),
+                  spreadRadius: -2,
                 ),
               ],
             ),
@@ -296,7 +303,7 @@ class _RecentlyDeletedScreenState extends ConsumerState<RecentlyDeletedScreen> {
                 },
                 borderRadius: BorderRadius.circular(24),
                 child: Padding(
-                  padding: const EdgeInsets.all(20),
+                  padding: AppTheme.responsivePadding(context),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -307,16 +314,16 @@ class _RecentlyDeletedScreenState extends ConsumerState<RecentlyDeletedScreen> {
                               width: 24,
                               height: 24,
                               decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                border: Border.all(
-                                  color: isSelected
-                                      ? AppTheme.dreamPurple
-                                      : AppTheme.glassBorder,
-                                  width: 2,
-                                ),
-                                color: isSelected
-                                    ? AppTheme.dreamPurple
-                                    : Colors.transparent,
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: isSelected
+                      ? AppTheme.dreamPurple.withOpacity(0.6)
+                      : AppTheme.glassBorder,
+                  width: 1.5,
+                ),
+                color: isSelected
+                    ? AppTheme.dreamPurple.withOpacity(0.4)
+                    : Colors.transparent,
                               ),
                               child: isSelected
                                   ? const Icon(
@@ -417,7 +424,7 @@ class _RecentlyDeletedScreenState extends ConsumerState<RecentlyDeletedScreen> {
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
           child: Container(
-            padding: const EdgeInsets.all(20),
+            padding: AppTheme.responsivePadding(context),
             decoration: AppTheme.glassContainer(borderRadius: 24),
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -468,7 +475,7 @@ class _RecentlyDeletedScreenState extends ConsumerState<RecentlyDeletedScreen> {
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
           child: Container(
-            padding: const EdgeInsets.all(24),
+            padding: AppTheme.responsivePadding(context),
             decoration: AppTheme.glassContainer(borderRadius: 24),
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -521,8 +528,11 @@ class _RecentlyDeletedScreenState extends ConsumerState<RecentlyDeletedScreen> {
                             child: InkWell(
                               onTap: () => Navigator.pop(context, true),
                               borderRadius: BorderRadius.circular(12),
-                              child: const Padding(
-                                padding: EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                              child: Padding(
+                                padding: EdgeInsets.symmetric(
+                                  horizontal: AppTheme.responsiveHorizontalPadding(context).horizontal,
+                                  vertical: AppTheme.spacingS + 4,
+                                ),
                                 child: Text(
                                   'Delete',
                                   style: TextStyle(
@@ -549,18 +559,18 @@ class _RecentlyDeletedScreenState extends ConsumerState<RecentlyDeletedScreen> {
   Widget _buildEmptyState() {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(32.0),
+        padding: EdgeInsets.all(AppTheme.spacingXL),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Container(
-              padding: const EdgeInsets.all(32),
+              padding: EdgeInsets.all(AppTheme.spacingXL),
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 gradient: RadialGradient(
                   colors: [
-                    AppTheme.cosmicGray.withOpacity(0.3),
-                    AppTheme.cosmicGray.withOpacity(0.1),
+                    AppTheme.cosmicGray.withOpacity(0.2),
+                    AppTheme.cosmicGray.withOpacity(0.08),
                     Colors.transparent,
                   ],
                 ),

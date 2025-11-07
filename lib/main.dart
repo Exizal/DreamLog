@@ -29,6 +29,23 @@ final folderRepositoryProvider = FutureProvider<FolderRepository>((ref) async {
   return repo;
 });
 
+// Stream provider for folders list that auto-updates when Hive box changes
+final foldersStreamProvider = StreamProvider<List<Folder>>((ref) async* {
+  // Wait for repository to be ready
+  final repo = await ref.watch(folderRepositoryProvider.future);
+  
+  // Get initial list
+  yield repo.getAll();
+  
+  // Watch Hive box for changes
+  if (Hive.isBoxOpen(HiveBoxes.folders)) {
+    final box = Hive.box<Folder>(HiveBoxes.folders);
+    await for (final _ in box.watch()) {
+      yield repo.getAll();
+    }
+  }
+});
+
 final routerProvider = Provider<GoRouter>((ref) {
   return GoRouter(
     initialLocation: '/',

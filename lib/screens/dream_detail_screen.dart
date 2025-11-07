@@ -80,22 +80,22 @@ class _DreamDetailScreenState extends ConsumerState<DreamDetailScreen> with Sing
                 child: SlideTransition(
                   position: _slideAnimation,
                   child: ListView(
-                    padding: const EdgeInsets.all(20),
+                    padding: AppTheme.responsivePadding(context),
                     children: [
                       // Title & Date Glass Card
                       _buildTitleCard(dream),
                       
-                      const SizedBox(height: 20),
+                      SizedBox(height: AppTheme.spacingM),
                       
                       // Dream Content Glass Panel
                       _buildContentCard(dream),
                       
-                      const SizedBox(height: 20),
+                      SizedBox(height: AppTheme.spacingM),
                       
                       // Details Glass Panel
                       _buildDetailsCard(dream),
                       
-                      const SizedBox(height: 20),
+                      SizedBox(height: AppTheme.spacingM),
                     ],
                   ),
                 ),
@@ -157,7 +157,7 @@ class _DreamDetailScreenState extends ConsumerState<DreamDetailScreen> with Sing
                     shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(
-                        color: AppTheme.getMoodColor(dream.mood).withOpacity(0.4),
+                        color: AppTheme.getMoodColor(dream.mood).withOpacity(0.2),
                         blurRadius: 30,
                         spreadRadius: 5,
                       ),
@@ -186,14 +186,14 @@ class _DreamDetailScreenState extends ConsumerState<DreamDetailScreen> with Sing
                   Icon(
                     Icons.calendar_today_rounded,
                     size: 16,
-                    color: AppTheme.moonGlow.withOpacity(0.6),
+                    color: AppTheme.moonGlow.withOpacity(0.4),
                   ),
                   const SizedBox(width: 6),
                   Text(
                     DateFormat('EEEE, MMMM d, y • h:mm a').format(dream.date),
                     style: TextStyle(
                       fontSize: 14,
-                      color: AppTheme.moonGlow.withOpacity(0.8),
+                      color: AppTheme.moonGlow.withOpacity(0.5),
                       fontWeight: FontWeight.w500,
                     ),
                   ),
@@ -367,7 +367,7 @@ class _DreamDetailScreenState extends ConsumerState<DreamDetailScreen> with Sing
                         style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w600,
-                          color: AppTheme.cosmicBlue.withOpacity(0.9),
+                          color: AppTheme.cosmicBlue.withOpacity(0.5),
                         ),
                       ),
                     );
@@ -411,7 +411,7 @@ class _DreamDetailScreenState extends ConsumerState<DreamDetailScreen> with Sing
             ),
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
-              color: color.withOpacity(0.4),
+              color: color.withOpacity(0.2),
               width: 1.5,
             ),
             boxShadow: [
@@ -510,7 +510,7 @@ class _DreamDetailScreenState extends ConsumerState<DreamDetailScreen> with Sing
                 HapticFeedback.mediumImpact(); // Apple-style haptic
                 onPressed();
               },
-              color: AppTheme.disturbingRed.withOpacity(0.9),
+              color: AppTheme.disturbingRed.withOpacity(0.5),
               iconSize: 22,
             ),
           ),
