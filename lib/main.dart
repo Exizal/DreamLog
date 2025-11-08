@@ -15,6 +15,7 @@ import 'screens/add_dream_screen.dart';
 import 'screens/dream_detail_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/recently_deleted_screen.dart';
+import 'widgets/page_transition.dart';
 
 // Providers
 final dreamRepositoryProvider = FutureProvider<DreamRepository>((ref) async {
@@ -30,20 +31,40 @@ final folderRepositoryProvider = FutureProvider<FolderRepository>((ref) async {
 });
 
 // Stream provider for folders list that auto-updates when Hive box changes
-final foldersStreamProvider = StreamProvider<List<Folder>>((ref) async* {
-  // Wait for repository to be ready
-  final repo = await ref.watch(folderRepositoryProvider.future);
+final foldersStreamProvider = StreamProvider<List<Folder>>((ref) {
+  final repoAsync = ref.watch(folderRepositoryProvider);
   
-  // Get initial list
-  yield repo.getAll();
-  
-  // Watch Hive box for changes
-  if (Hive.isBoxOpen(HiveBoxes.folders)) {
-    final box = Hive.box<Folder>(HiveBoxes.folders);
-    await for (final _ in box.watch()) {
-      yield repo.getAll();
-    }
-  }
+  return repoAsync.when(
+    data: (repo) {
+      // Use the repository's watchAll method which properly handles streaming
+      return repo.watchAll();
+    },
+    loading: () {
+      // Return default folder while loading
+      return Stream.value([
+        Folder(
+          id: 'Dreams',
+          name: 'Dreams',
+          createdAt: DateTime.now(),
+          color: '#9B59B6',
+          icon: 'nightlight_round',
+        ),
+      ]);
+    },
+    error: (error, stack) {
+      debugPrint('Error loading folder repository: $error');
+      // Return default folder on error
+      return Stream.value([
+        Folder(
+          id: 'Dreams',
+          name: 'Dreams',
+          createdAt: DateTime.now(),
+          color: '#9B59B6',
+          icon: 'nightlight_round',
+        ),
+      ]);
+    },
+  );
 });
 
 final routerProvider = Provider<GoRouter>((ref) {
@@ -53,36 +74,54 @@ final routerProvider = Provider<GoRouter>((ref) {
     routes: [
       GoRoute(
         path: '/',
-        builder: (context, state) {
+        pageBuilder: (context, state) {
+          Widget screen;
           try {
-            return const HomeScreen();
+            screen = const HomeScreen();
           } catch (e) {
-            return Scaffold(
+            screen = Scaffold(
               body: Center(
                 child: Text('Error loading home: $e'),
               ),
             );
           }
+          return PageTransitionBuilder.fade(context, state, screen);
         },
       ),
       GoRoute(
         path: '/add',
-        builder: (context, state) => const AddDreamScreen(),
+        pageBuilder: (context, state) => PageTransitionBuilder.slideRight(
+          context,
+          state,
+          const AddDreamScreen(),
+        ),
       ),
       GoRoute(
         path: '/detail/:id',
-        builder: (context, state) {
+        pageBuilder: (context, state) {
           final id = state.pathParameters['id']!;
-          return DreamDetailScreen(dreamId: id);
+          return PageTransitionBuilder.slideRight(
+            context,
+            state,
+            DreamDetailScreen(dreamId: id),
+          );
         },
       ),
       GoRoute(
         path: '/settings',
-        builder: (context, state) => const SettingsScreen(),
+        pageBuilder: (context, state) => PageTransitionBuilder.fade(
+          context,
+          state,
+          const SettingsScreen(),
+        ),
       ),
       GoRoute(
         path: '/deleted',
-        builder: (context, state) => const RecentlyDeletedScreen(),
+        pageBuilder: (context, state) => PageTransitionBuilder.fade(
+          context,
+          state,
+          const RecentlyDeletedScreen(),
+        ),
       ),
     ],
     errorBuilder: (context, state) => Scaffold(
@@ -120,6 +159,23 @@ void main() async {
     await Hive.openBox<DreamEntry>(HiveBoxes.dreams);
     await Hive.openBox(HiveBoxes.preferences);
     await Hive.openBox<Folder>(HiveBoxes.folders);
+
+    // Initialize repositories to ensure they're ready
+    try {
+      final folderRepo = FolderRepository();
+      await folderRepo.init();
+      debugPrint('Folder repository initialized successfully');
+    } catch (e) {
+      debugPrint('Error initializing folder repository: $e');
+    }
+
+    try {
+      final dreamRepo = DreamRepository();
+      await dreamRepo.init();
+      debugPrint('Dream repository initialized successfully');
+    } catch (e) {
+      debugPrint('Error initializing dream repository: $e');
+    }
 
     // Initialize services
     await NotificationService.initialize();

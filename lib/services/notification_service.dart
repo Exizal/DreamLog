@@ -101,6 +101,7 @@ class NotificationService {
     final prefsBox = await Hive.openBox(HiveBoxes.preferences);
     await prefsBox.put('notification_hour', time.hour);
     await prefsBox.put('notification_minute', time.minute);
+    await prefsBox.put('notifications_enabled', true);
   }
 
   static Future<void> _scheduleNotification(tz.TZDateTime scheduledDate) async {
@@ -132,6 +133,9 @@ class NotificationService {
 
   static Future<void> cancelAllNotifications() async {
     await _notifications.cancelAll();
+    // Save that notifications are disabled
+    final prefsBox = await Hive.openBox(HiveBoxes.preferences);
+    await prefsBox.put('notifications_enabled', false);
   }
 
   static Future<TimeOfDay?> getNotificationTime() async {
@@ -142,6 +146,15 @@ class NotificationService {
       return TimeOfDay(hour: hour, minute: minute);
     } catch (e) {
       return const TimeOfDay(hour: 8, minute: 0); // Default 8 AM
+    }
+  }
+
+  static Future<bool> areNotificationsEnabled() async {
+    try {
+      final prefsBox = await Hive.openBox(HiveBoxes.preferences);
+      return prefsBox.get('notifications_enabled', defaultValue: false) as bool;
+    } catch (e) {
+      return false;
     }
   }
 }

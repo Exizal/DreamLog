@@ -1,35 +1,50 @@
+import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../models/dream_entry.dart';
 import '../data/hive_boxes.dart';
+import '../services/streak_service.dart';
 
 class DreamRepository {
   Box<DreamEntry>? _dreamsBox;
   bool _isInitializing = false;
+  final StreakService _streakService = StreakService();
 
   Future<void> init() async {
-    if (_isInitializing) return;
+    if (_isInitializing) {
+      // Wait for initialization to complete
+      while (_isInitializing) {
+        await Future.delayed(const Duration(milliseconds: 50));
+      }
+      return;
+    }
+    
     _isInitializing = true;
     
     try {
-      // Boxes are already opened in main.dart, so just get the existing box
+      // Try to get existing box first (should already be open from main.dart)
       if (Hive.isBoxOpen(HiveBoxes.dreams)) {
         _dreamsBox = Hive.box<DreamEntry>(HiveBoxes.dreams);
+        debugPrint('Dreams box already open, using existing box');
       } else {
-        // If for some reason it's not open, open it
+        // Open the box if it's not already open
+        debugPrint('Opening dreams box...');
         _dreamsBox = await Hive.openBox<DreamEntry>(HiveBoxes.dreams);
+        debugPrint('Dreams box opened successfully');
       }
-    } catch (e) {
-      // If there's an error, try to get the box anyway
+    } catch (e, stackTrace) {
+      debugPrint('Error in dream repository init: $e');
+      debugPrint('Stack trace: $stackTrace');
       try {
+        // Retry once
         if (Hive.isBoxOpen(HiveBoxes.dreams)) {
           _dreamsBox = Hive.box<DreamEntry>(HiveBoxes.dreams);
+          debugPrint('Dreams box retrieved on retry');
         } else {
-          // Last resort: try to open it
           _dreamsBox = await Hive.openBox<DreamEntry>(HiveBoxes.dreams);
+          debugPrint('Dreams box opened on retry');
         }
       } catch (e2) {
-        // If we can't get the box, it will remain null
-        // Methods will handle this gracefully
+        debugPrint('Error in dream repository init fallback: $e2');
         _dreamsBox = null;
       }
     } finally {
@@ -37,43 +52,93 @@ class DreamRepository {
     }
   }
 
-  Stream<List<DreamEntry>> watchAll() {
+  // Ensure box is initialized before operations
+  Future<void> _ensureBoxInitialized() async {
+    if (_dreamsBox != null && _dreamsBox!.isOpen) {
+      return; // Box is already initialized
+    }
+
+    // Try to get the box
+    if (Hive.isBoxOpen(HiveBoxes.dreams)) {
+      _dreamsBox = Hive.box<DreamEntry>(HiveBoxes.dreams);
+      if (_dreamsBox != null && _dreamsBox!.isOpen) {
+        return; // Successfully got the box
+      }
+    }
+
+    // Box is not open, try to initialize
+    await init();
+
+    // If still not initialized, try one more time
+    if (_dreamsBox == null || !_dreamsBox!.isOpen) {
+      if (Hive.isBoxOpen(HiveBoxes.dreams)) {
+        _dreamsBox = Hive.box<DreamEntry>(HiveBoxes.dreams);
+      } else {
+        try {
+          _dreamsBox = await Hive.openBox<DreamEntry>(HiveBoxes.dreams);
+        } catch (e) {
+          debugPrint('Failed to open dreams box: $e');
+          throw Exception('Unable to initialize dreams storage. Please restart the app.');
+        }
+      }
+    }
+  }
+
+  Stream<List<DreamEntry>> watchAll() async* {
     try {
       // Try to get box if not already set
-      if (_dreamsBox == null) {
+      if (_dreamsBox == null || !_dreamsBox!.isOpen) {
         if (Hive.isBoxOpen(HiveBoxes.dreams)) {
           _dreamsBox = Hive.box<DreamEntry>(HiveBoxes.dreams);
         } else {
-          return Stream.value(<DreamEntry>[]);
+          // Box not available, emit empty list
+          yield <DreamEntry>[];
+          return;
         }
       }
       
-      if (!_dreamsBox!.isOpen) {
-        return Stream.value(<DreamEntry>[]);
+      if (_dreamsBox == null || !_dreamsBox!.isOpen) {
+        yield <DreamEntry>[];
+        return;
       }
       
-      return _dreamsBox!.watch().map((_) {
+      // Emit initial value immediately
+      try {
+        final initialDreams = _dreamsBox!.values
+            .where((dream) => !dream.isDeleted)
+            .toList()
+          ..sort((a, b) => b.date.compareTo(a.date));
+        yield initialDreams;
+      } catch (e) {
+        yield <DreamEntry>[];
+      }
+      
+      // Watch for changes and emit updated lists
+      await for (final _ in _dreamsBox!.watch()) {
         try {
           if (_dreamsBox == null || !_dreamsBox!.isOpen) {
-            return <DreamEntry>[];
+            yield <DreamEntry>[];
+            continue;
           }
-          return _dreamsBox!.values
+          final dreams = _dreamsBox!.values
               .where((dream) => !dream.isDeleted)
               .toList()
             ..sort((a, b) => b.date.compareTo(a.date));
+          yield dreams;
         } catch (e) {
-          return <DreamEntry>[];
+          yield <DreamEntry>[];
         }
-      });
+      }
     } catch (e) {
-      return Stream.value(<DreamEntry>[]);
+      debugPrint('Error in watchAll stream: $e');
+      yield <DreamEntry>[];
     }
   }
 
   List<DreamEntry> getAll() {
     try {
       // Try to get box if not already set
-      if (_dreamsBox == null) {
+      if (_dreamsBox == null || !_dreamsBox!.isOpen) {
         if (Hive.isBoxOpen(HiveBoxes.dreams)) {
           _dreamsBox = Hive.box<DreamEntry>(HiveBoxes.dreams);
         } else {
@@ -81,7 +146,7 @@ class DreamRepository {
         }
       }
       
-      if (!_dreamsBox!.isOpen) {
+      if (_dreamsBox == null || !_dreamsBox!.isOpen) {
         return [];
       }
       
@@ -96,58 +161,49 @@ class DreamRepository {
 
   Future<void> addDream(DreamEntry dream) async {
     try {
-      // Try to get box if not already set
-      if (_dreamsBox == null || !_dreamsBox!.isOpen) {
-        // First try to get existing box
-        if (Hive.isBoxOpen(HiveBoxes.dreams)) {
-          _dreamsBox = Hive.box<DreamEntry>(HiveBoxes.dreams);
-        } else {
-          // If box is not open, try to open it
-          try {
-            _dreamsBox = await Hive.openBox<DreamEntry>(HiveBoxes.dreams);
-          } catch (e) {
-            // If opening fails, try init again
-            await init();
-          }
-        }
-      }
+      // Ensure box is initialized before adding
+      await _ensureBoxInitialized();
       
       // Verify box is open
       if (_dreamsBox == null || !_dreamsBox!.isOpen) {
-        // Last attempt: try to get the box directly
-        if (Hive.isBoxOpen(HiveBoxes.dreams)) {
-          _dreamsBox = Hive.box<DreamEntry>(HiveBoxes.dreams);
-        } else {
-          throw Exception('Dream box is not initialized. Please restart the app.');
-        }
+        throw Exception('Dream box is not initialized. Please restart the app.');
       }
       
       // Ensure folderId is set to Dreams by default if not set
       final dreamToSave = dream.folderId.isEmpty ? dream.copyWith(folderId: 'Dreams') : dream;
+      
+      debugPrint('Saving dream with id: ${dreamToSave.id}');
       await _dreamsBox!.put(dreamToSave.id, dreamToSave);
-    } catch (e) {
+      debugPrint('Dream saved successfully');
+      
+      // Update streak when a dream is added
+      try {
+        await _streakService.updateStreak(dreamToSave.date);
+      } catch (e) {
+        // Silently handle streak update errors - don't fail dream save
+        debugPrint('Error updating streak: $e');
+      }
+    } catch (e, stackTrace) {
+      debugPrint('Error adding dream: $e');
+      debugPrint('Stack trace: $stackTrace');
       rethrow; // Re-throw to show error to user
     }
   }
 
   Future<void> updateDream(DreamEntry dream) async {
     try {
-      if (_dreamsBox == null || !_dreamsBox!.isOpen) {
-        await init();
-      }
+      await _ensureBoxInitialized();
       if (_dreamsBox != null && _dreamsBox!.isOpen) {
         await _dreamsBox!.put(dream.id, dream);
       }
     } catch (e) {
-      // Silently handle errors
+      debugPrint('Error updating dream: $e');
     }
   }
 
   Future<void> deleteDream(String id) async {
     try {
-      if (_dreamsBox == null || !_dreamsBox!.isOpen) {
-        await init();
-      }
+      await _ensureBoxInitialized();
       if (_dreamsBox != null && _dreamsBox!.isOpen) {
         final dream = _dreamsBox!.get(id);
         if (dream != null) {
@@ -160,7 +216,7 @@ class DreamRepository {
         }
       }
     } catch (e) {
-      // Silently handle errors
+      debugPrint('Error deleting dream: $e');
     }
   }
 
@@ -168,8 +224,17 @@ class DreamRepository {
   List<DreamEntry> getDeletedDreams() {
     try {
       if (_dreamsBox == null || !_dreamsBox!.isOpen) {
+        if (Hive.isBoxOpen(HiveBoxes.dreams)) {
+          _dreamsBox = Hive.box<DreamEntry>(HiveBoxes.dreams);
+        } else {
+          return [];
+        }
+      }
+
+      if (_dreamsBox == null || !_dreamsBox!.isOpen) {
         return [];
       }
+
       return _dreamsBox!.values
           .where((dream) => dream.isDeleted && dream.deletedAt != null)
           .toList()
@@ -183,9 +248,7 @@ class DreamRepository {
   // Restore a deleted dream
   Future<void> restoreDream(String id) async {
     try {
-      if (_dreamsBox == null || !_dreamsBox!.isOpen) {
-        await init();
-      }
+      await _ensureBoxInitialized();
       if (_dreamsBox != null && _dreamsBox!.isOpen) {
         final dream = _dreamsBox!.get(id);
         if (dream != null) {
@@ -197,16 +260,14 @@ class DreamRepository {
         }
       }
     } catch (e) {
-      // Silently handle errors
+      debugPrint('Error restoring dream: $e');
     }
   }
 
   // Permanently delete old dreams (older than 30 days)
   Future<void> permanentlyDeleteOldDreams() async {
     try {
-      if (_dreamsBox == null || !_dreamsBox!.isOpen) {
-        await init();
-      }
+      await _ensureBoxInitialized();
       if (_dreamsBox != null && _dreamsBox!.isOpen) {
         final thirtyDaysAgo = DateTime.now().subtract(const Duration(days: 30));
         final deletedDreams = _dreamsBox!.values
@@ -221,31 +282,39 @@ class DreamRepository {
         }
       }
     } catch (e) {
-      // Silently handle errors
+      debugPrint('Error permanently deleting old dreams: $e');
     }
   }
 
   // Permanently delete a specific dream
   Future<void> permanentlyDeleteDream(String id) async {
     try {
-      if (_dreamsBox == null || !_dreamsBox!.isOpen) {
-        await init();
-      }
+      await _ensureBoxInitialized();
       if (_dreamsBox != null && _dreamsBox!.isOpen) {
         await _dreamsBox!.delete(id);
       }
     } catch (e) {
-      // Silently handle errors
+      debugPrint('Error permanently deleting dream: $e');
     }
   }
 
   DreamEntry? getDream(String id) {
     try {
       if (_dreamsBox == null || !_dreamsBox!.isOpen) {
+        if (Hive.isBoxOpen(HiveBoxes.dreams)) {
+          _dreamsBox = Hive.box<DreamEntry>(HiveBoxes.dreams);
+        } else {
+          return null;
+        }
+      }
+
+      if (_dreamsBox == null || !_dreamsBox!.isOpen) {
         return null;
       }
+
       return _dreamsBox!.get(id);
     } catch (e) {
+      debugPrint('Error getting dream: $e');
       return null;
     }
   }
@@ -253,8 +322,17 @@ class DreamRepository {
   List<DreamEntry> getByDate(DateTime date) {
     try {
       if (_dreamsBox == null || !_dreamsBox!.isOpen) {
+        if (Hive.isBoxOpen(HiveBoxes.dreams)) {
+          _dreamsBox = Hive.box<DreamEntry>(HiveBoxes.dreams);
+        } else {
+          return [];
+        }
+      }
+
+      if (_dreamsBox == null || !_dreamsBox!.isOpen) {
         return [];
       }
+
       final dateOnly = DateTime(date.year, date.month, date.day);
       return _dreamsBox!.values
           .where((dream) {
@@ -272,51 +350,12 @@ class DreamRepository {
 
   int computeStreak() {
     try {
-      final allDreams = getAll();
-      if (allDreams.isEmpty) return 0;
-
-      // Get unique dates (day-level)
-      final datesWithEntries = allDreams
-          .map((dream) => DateTime(
-                dream.date.year,
-                dream.date.month,
-                dream.date.day,
-              ))
-          .toSet()
-          .toList()
-        ..sort((a, b) => b.compareTo(a));
-
-      if (datesWithEntries.isEmpty) return 0;
-
-      // Check if today has an entry
-      final today = DateTime.now();
-      final todayOnly = DateTime(today.year, today.month, today.day);
-      final latestDate = datesWithEntries.first;
-
-      // If latest entry is not today or yesterday, streak is 0
-      final daysDiff = todayOnly.difference(latestDate).inDays;
-      if (daysDiff > 1) return 0;
-
-      // Count consecutive days from latest date backwards
-      int streak = 0;
-      DateTime currentDate = latestDate;
-
-      for (final entryDate in datesWithEntries) {
-        final daysDiff = currentDate.difference(entryDate).inDays;
-        if (daysDiff == 0) {
-          // Same day
-          if (streak == 0) streak = 1;
-        } else if (daysDiff == 1) {
-          // Consecutive day
-          streak++;
-          currentDate = entryDate;
-        } else {
-          // Gap found, streak breaks
-          break;
-        }
-      }
-
-      return streak;
+      // Validate the streak (check if it should be reset based on time since last dream)
+      // This will reset streak to 0 if more than 24 hours have passed
+      _streakService.validateStreak();
+      
+      // Return the persisted streak count
+      return _streakService.getCurrentStreak();
     } catch (e) {
       return 0;
     }

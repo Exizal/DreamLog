@@ -62,7 +62,7 @@ class _CategoryDropdownState extends State<CategoryDropdown> {
     },
     {
       'name': 'Other',
-      'icon': Icons.category_rounded, // Apple-style rounded
+      'icon': Icons.category_rounded, // Apple-se rounded
       'iconFilled': Icons.category,
       'color': AppTheme.cosmicGray,
       'description': 'Different type',

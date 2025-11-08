@@ -72,16 +72,27 @@ class _AddDreamScreenState extends ConsumerState<AddDreamScreen> {
       DreamRepository repo;
       try {
         repo = await ref.read(dreamRepositoryProvider.future);
+        // Ensure repository box is properly initialized
+        if (!Hive.isBoxOpen(HiveBoxes.dreams)) {
+          debugPrint('Dream box not open, reinitializing repository...');
+          await repo.init();
+        }
       } catch (e) {
+        debugPrint('Error getting repository from provider: $e');
         // If provider fails, create a new instance and initialize it
         repo = DreamRepository();
         await repo.init();
         
         // Verify the box is actually open
-        if (repo.getAll().isEmpty && !Hive.isBoxOpen(HiveBoxes.dreams)) {
-          // Try to open the box manually
-          await Hive.openBox<DreamEntry>(HiveBoxes.dreams);
-          await repo.init();
+        if (!Hive.isBoxOpen(HiveBoxes.dreams)) {
+          debugPrint('Dream box still not open, trying to open manually...');
+          try {
+            await Hive.openBox<DreamEntry>(HiveBoxes.dreams);
+            await repo.init();
+          } catch (e2) {
+            debugPrint('Failed to open dream box: $e2');
+            throw Exception('Unable to initialize dream storage. Please restart the app.');
+          }
         }
       }
 
@@ -107,8 +118,17 @@ class _AddDreamScreenState extends ConsumerState<AddDreamScreen> {
         setState(() => _isSaving = false);
         // Show folder selection dialog
         await _showFolderSelectionDialog(dream.id, repo);
+        // Close the screen after dialog closes (dream is already saved)
+        // Whether folder was selected or canceled, we close the screen since the dream is saved
         if (mounted) {
-          context.pop();
+          try {
+            if (context.canPop()) {
+              context.pop();
+            }
+          } catch (e) {
+            // If pop fails (e.g., already popped or nothing to pop), ignore it
+            debugPrint('Error popping navigation: $e');
+          }
         }
       }
     } catch (e) {
@@ -443,8 +463,7 @@ class _AddDreamScreenState extends ConsumerState<AddDreamScreen> {
               onPrimary: AppTheme.textPrimary,
               surface: AppTheme.backgroundSecondary,
               onSurface: AppTheme.textPrimary,
-            ),
-            dialogBackgroundColor: AppTheme.backgroundSecondary,
+            ), dialogTheme: DialogThemeData(backgroundColor: AppTheme.backgroundSecondary),
           ),
           child: child!,
         );
@@ -499,7 +518,7 @@ class _AddDreamScreenState extends ConsumerState<AddDreamScreen> {
                       } else {
                         // Insert at cursor or append
                         final cursorPos = selection.baseOffset;
-                        _contentController.text = currentText.substring(0, cursorPos) + '**' + currentText.substring(cursorPos);
+                        _contentController.text = '${currentText.substring(0, cursorPos)}**${currentText.substring(cursorPos)}';
                         _contentController.selection = TextSelection.collapsed(offset: cursorPos + 2);
                       }
                       Navigator.pop(context);
@@ -541,7 +560,7 @@ class _AddDreamScreenState extends ConsumerState<AddDreamScreen> {
                       } else {
                         // Insert at cursor or append
                         final cursorPos = selection.baseOffset;
-                        _contentController.text = currentText.substring(0, cursorPos) + '*' + currentText.substring(cursorPos);
+                        _contentController.text = '${currentText.substring(0, cursorPos)}*${currentText.substring(cursorPos)}';
                         _contentController.selection = TextSelection.collapsed(offset: cursorPos + 1);
                       }
                       Navigator.pop(context);
@@ -1881,14 +1900,17 @@ class _AddDreamScreenState extends ConsumerState<AddDreamScreen> {
   }
 
   // Mobile-friendly folder selection dialog
-  Future<void> _showFolderSelectionDialog(String dreamId, DreamRepository repo) async {
+  // Returns true if a folder was selected (screen already closed), false if canceled
+  Future<bool> _showFolderSelectionDialog(String dreamId, DreamRepository repo) async {
     final foldersAsync = ref.read(folderRepositoryProvider);
     
-    await showModalBottomSheet(
+    final result = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       barrierColor: Colors.black.withOpacity(0.7),
+      isDismissible: true,
+      enableDrag: true,
       builder: (dialogContext) {
         return DraggableScrollableSheet(
           initialChildSize: 0.7,
@@ -1934,6 +1956,8 @@ class _AddDreamScreenState extends ConsumerState<AddDreamScreen> {
         );
       },
     );
+    // Return true if folder was selected (screen already closed), false if canceled
+    return result ?? false;
   }
 
   Widget _buildFolderSelectionContent(
@@ -2128,22 +2152,11 @@ class _AddDreamScreenState extends ConsumerState<AddDreamScreen> {
                     if (dream != null) {
                       await repo.updateDream(dream.copyWith(folderId: folder.id));
                       if (context.mounted) {
-                        Navigator.of(context).pop(); // Close folder selection dialog
-                        Navigator.of(context).pop(); // Close add dream screen
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text('Dream saved to ${folder.name}'),
-                            behavior: SnackBarBehavior.floating,
-                            backgroundColor: AppTheme.accentPrimary.withOpacity(0.9),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                        );
+                        Navigator.of(context).pop(true); // Close folder selection dialog, return true
                       }
                     } else {
                       if (context.mounted) {
-                        Navigator.of(context).pop();
+                        Navigator.of(context).pop(false); // Close dialog, return false (error)
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
                             content: const Text('Error: Dream not found'),
@@ -2215,7 +2228,7 @@ class _AddDreamScreenState extends ConsumerState<AddDreamScreen> {
           child: GestureDetector(
             onTap: () {
               HapticFeedback.lightImpact();
-              Navigator.of(context).pop();
+              Navigator.of(context).pop(false); // Return false to indicate cancel
             },
             child: Container(
               padding: const EdgeInsets.symmetric(vertical: 18),
@@ -2501,7 +2514,7 @@ class _AddDreamScreenState extends ConsumerState<AddDreamScreen> {
                                   
                                   try {
                                     final folderRepoAsync = stateRef.read(folderRepositoryProvider);
-                                    final folderRepo = await folderRepoAsync.when(
+                                    final folderRepo = folderRepoAsync.when(
                                       data: (repo) => repo,
                                       loading: () => null,
                                       error: (_, __) => null,
@@ -2558,7 +2571,6 @@ class _AddDreamScreenState extends ConsumerState<AddDreamScreen> {
                                       );
                                       
                                       await folderRepo.createFolder(newFolder);
-                                      stateRef.invalidate(folderRepositoryProvider);
                                       
                                       // Update dream with new folder
                                       final dream = repo.getDream(dreamId);
@@ -2566,20 +2578,14 @@ class _AddDreamScreenState extends ConsumerState<AddDreamScreen> {
                                         await repo.updateDream(dream.copyWith(folderId: newFolder.id));
                                       }
                                       
+                                      // Invalidate both providers to refresh the UI
+                                      stateRef.invalidate(folderRepositoryProvider);
+                                      stateRef.invalidate(foldersStreamProvider);
+                                      
                                       if (dialogBuilderContext.mounted) {
                                         Navigator.of(dialogBuilderContext).pop(); // Close create folder dialog
-                                        Navigator.of(dialogBuilderContext).pop(); // Close folder selection dialog
-                                        Navigator.of(dialogBuilderContext).pop(); // Close add dream screen
-                                        ScaffoldMessenger.of(dialogBuilderContext).showSnackBar(
-                                          SnackBar(
-                                            content: Text('Dream saved to ${newFolder.name}'),
-                                            behavior: SnackBarBehavior.floating,
-                                            backgroundColor: AppTheme.accentPrimary.withOpacity(0.9),
-                                            shape: RoundedRectangleBorder(
-                                              borderRadius: BorderRadius.circular(12),
-                                            ),
-                                          ),
-                                        );
+                                        Navigator.of(dialogBuilderContext).pop(true); // Close folder selection dialog, return true
+                                        // The screen will be closed by _saveDream() after the dialog returns
                                       }
                                     }
                                   } catch (e) {

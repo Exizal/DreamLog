@@ -15,6 +15,8 @@ import '../theme/app_theme.dart';
 import '../widgets/glass_components.dart';
 import '../widgets/animations.dart';
 import '../widgets/calendar_month.dart';
+import '../widgets/animated_dialog.dart';
+import '../widgets/animated_list_tile.dart';
 
 final dreamsStreamProvider = StreamProvider<List<DreamEntry>>((ref) {
   final repoAsync = ref.watch(dreamRepositoryProvider);
@@ -67,6 +69,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
     final dreamsAsync = ref.watch(dreamsStreamProvider);
     final repoAsync = ref.watch(dreamRepositoryProvider);
 
+    // Check if we should show dream list view at the top level
+    if (_showDreamList) {
+      debugPrint('Showing dream list view for folder: $_selectedFolderId');
+      // Get dreams list - if loading, show empty state instead of loading indicator
+      final dreams = dreamsAsync.valueOrNull ?? [];
+      
+      return GlassBackground(
+        child: _buildDreamListView(dreams, context),
+      );
+    }
+
     return GlassBackground(
       child: Scaffold(
         backgroundColor: Colors.transparent,
@@ -87,10 +100,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
                 final markedDates = dreams
                     .map((dream) => DateTime(dream.date.year, dream.date.month, dream.date.day))
                     .toSet();
-
-                if (_showDreamList) {
-                  return _buildDreamListView(dreams);
-                }
 
                 return ListView(
                   padding: AppTheme.responsivePadding(context),
@@ -544,41 +553,55 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
     
     return foldersAsync.when(
       data: (allFolders) {
-        // Always ensure Dreams folder exists and is first
-        final dreamsFolder = allFolders.firstWhere(
-          (f) => f.id == 'Dreams',
-          orElse: () => Folder(
+        debugPrint('Building dreams section with ${allFolders.length} folders');
+        // The repository should already ensure Dreams folder exists
+        // But if it doesn't, show it anyway and create it
+        List<Folder> folders = allFolders;
+        
+        if (folders.isEmpty || !folders.any((f) => f.id == 'Dreams')) {
+          debugPrint('Dreams folder missing, creating temporary one for display');
+          final dreamsFolder = Folder(
             id: 'Dreams',
             name: 'Dreams',
             createdAt: DateTime.now(),
             color: '#9B59B6',
             icon: 'nightlight_round',
-          ),
-        );
+          );
+          folders = [dreamsFolder, ...folders];
+          
+          // Create it in repository
+          ref.read(folderRepositoryProvider.future).then((folderRepo) async {
+            try {
+              await folderRepo.createFolder(dreamsFolder);
+              ref.invalidate(folderRepositoryProvider);
+              ref.invalidate(foldersStreamProvider);
+            } catch (e) {
+              debugPrint('Error creating Dreams folder: $e');
+            }
+          });
+        }
         
-        // Ensure Dreams folder is always first
-        final folders = [
-          dreamsFolder,
-          ...allFolders.where((f) => f.id != 'Dreams'),
-        ];
+        debugPrint('Displaying ${folders.length} folders');
         
+        // Get dreams to count them per folder - but don't wait for it, show folders immediately
         final dreamsAsync = ref.watch(dreamsStreamProvider);
         
-        return dreamsAsync.when(
-          data: (dreams) {
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Header with title only
-                Text(
-                  'Dreams',
-                  style: AppTheme.headline(context),
-                ),
-                SizedBox(height: AppTheme.spacingS),
-                // Display all folders (Dreams folder first, always visible)
-                ...folders.map((folder) {
-                  final folderDreams = dreams.where((dream) => dream.folderId == folder.id).toList();
-                  final folderCount = folderDreams.length;
+        // Always show folders, even if dreams are loading
+        final dreams = dreamsAsync.valueOrNull ?? [];
+        
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header with title only
+            Text(
+              'Dreams',
+              style: AppTheme.headline(context),
+            ),
+            SizedBox(height: AppTheme.spacingS),
+            // Display all folders (Dreams folder first, always visible)
+            ...folders.map<Widget>((folder) {
+              final folderDreams = dreams.where((dream) => dream.folderId == folder.id).toList();
+              final folderCount = folderDreams.length;
                   
                   // Get icon from folder.icon string
                   IconData folderIcon = Icons.folder_rounded;
@@ -643,124 +666,120 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
                     folderColor = const Color(0xFF9B59B6);
                   }
                   
+                  // Build folder item widget
+                  Widget folderItemWidget = _buildDreamFolderItem(
+                    context: context,
+                    icon: folderIcon,
+                    title: folder.name,
+                    count: folderCount,
+                    color: folderColor,
+                    onTap: () {
+                      debugPrint('Folder tapped: ${folder.id} - ${folder.name}');
+                      HapticFeedback.selectionClick();
+                      // Open folder - show dreams in this folder
+                      if (mounted) {
+                        setState(() {
+                          _selectedFolderId = folder.id;
+                          _showDreamList = true;
+                        });
+                        debugPrint('State updated: _showDreamList=$_showDreamList, _selectedFolderId=$_selectedFolderId');
+                      }
+                    },
+                    onCreateTap: () {
+                      // Not used
+                    },
+                  );
+                  
+                  // Wrap in AnimatedListTile for staggered animation
+                  Widget animatedItem = AnimatedListTile(
+                    delay: Duration(milliseconds: 50 * folders.indexOf(folder)),
+                    child: Padding(
+                      padding: EdgeInsets.only(bottom: AppTheme.spacingS),
+                      child: folderItemWidget,
+                    ),
+                  );
+                  
                   // For Dreams folder, don't wrap in Dismissible to avoid tap interference
                   if (folder.id == 'Dreams') {
-                    return Padding(
-                      padding: EdgeInsets.only(bottom: AppTheme.spacingS),
-                      child: _buildDreamFolderItem(
-                        icon: folderIcon,
-                        title: folder.name,
-                        count: folderCount,
-                        color: folderColor,
-                        onTap: () {
-                          HapticFeedback.selectionClick();
-                          // Open folder - show dreams in this folder
-                          setState(() {
-                            _selectedFolderId = folder.id;
-                            _showDreamList = true;
-                          });
-                        },
-                        onCreateTap: () {
-                          // Not used
-                        },
-                      ),
-                    );
+                    return animatedItem;
                   }
                   
                   // For other folders, allow swipe to delete
-                  return Padding(
-                    padding: EdgeInsets.only(bottom: AppTheme.spacingS),
-                    child: Dismissible(
-                      key: Key('folder_${folder.id}'),
-                      direction: DismissDirection.endToStart,
-                      background: Container(
-                        margin: EdgeInsets.only(bottom: AppTheme.spacingS),
-                        decoration: BoxDecoration(
-                          color: AppTheme.disturbingRed.withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(AppTheme.radiusM),
-                          border: Border.all(
-                            color: AppTheme.disturbingRed.withOpacity(0.4),
-                            width: 1,
-                          ),
-                        ),
-                        alignment: Alignment.centerRight,
-                        padding: EdgeInsets.only(right: AppTheme.spacingM),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.end,
-                          children: [
-                            Icon(
-                              Icons.delete_outline_rounded,
-                              color: AppTheme.disturbingRed,
-                              size: 24,
-                            ),
-                            SizedBox(width: AppTheme.spacingS),
-                            Text(
-                              'Delete',
-                              style: AppTheme.callout(context).copyWith(
-                                color: AppTheme.disturbingRed,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
+                  return Dismissible(
+                    key: Key('folder_${folder.id}'),
+                    direction: DismissDirection.endToStart,
+                    background: Container(
+                      margin: EdgeInsets.only(bottom: AppTheme.spacingS),
+                      decoration: BoxDecoration(
+                        color: AppTheme.disturbingRed.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(AppTheme.radiusM),
+                        border: Border.all(
+                          color: AppTheme.disturbingRed.withOpacity(0.4),
+                          width: 1,
                         ),
                       ),
-                      confirmDismiss: (direction) async {
-                        return true;
-                      },
-                      onDismissed: (direction) async {
-                        HapticFeedback.mediumImpact();
-                        try {
-                          // Get folder repository
-                          final folderRepo = await ref.read(folderRepositoryProvider.future);
-                          await folderRepo.deleteFolder(folder.id);
-                          // Invalidate to refresh the list
-                          ref.invalidate(foldersStreamProvider);
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('${folder.name} deleted'),
-                                behavior: SnackBarBehavior.floating,
-                                backgroundColor: AppTheme.accentPrimary.withOpacity(0.9),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                duration: const Duration(seconds: 2),
-                              ),
-                            );
-                          }
-                        } catch (e) {
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('Error deleting folder: $e'),
-                                behavior: SnackBarBehavior.floating,
-                                backgroundColor: AppTheme.disturbingRed.withOpacity(0.9),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                              ),
-                            );
-                          }
-                        }
-                      },
-                      child: _buildDreamFolderItem(
-                        icon: folderIcon,
-                        title: folder.name,
-                        count: folderCount,
-                        color: folderColor,
-                        onTap: () {
-                          HapticFeedback.selectionClick();
-                          // Open folder - show dreams in this folder
-                          setState(() {
-                            _selectedFolderId = folder.id;
-                            _showDreamList = true;
-                          });
-                        },
-                        onCreateTap: () {
-                          // Not used
-                        },
+                      alignment: Alignment.centerRight,
+                      padding: EdgeInsets.only(right: AppTheme.spacingM),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          Icon(
+                            Icons.delete_outline_rounded,
+                            color: AppTheme.disturbingRed,
+                            size: 24,
+                          ),
+                          SizedBox(width: AppTheme.spacingS),
+                          Text(
+                            'Delete',
+                            style: AppTheme.callout(context).copyWith(
+                              color: AppTheme.disturbingRed,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
+                    confirmDismiss: (direction) async {
+                      return true;
+                    },
+                    onDismissed: (direction) async {
+                      HapticFeedback.mediumImpact();
+                      try {
+                        // Get folder repository
+                        final folderRepo = await ref.read(folderRepositoryProvider.future);
+                        await folderRepo.deleteFolder(folder.id);
+                        // Invalidate both providers to refresh the list
+                        ref.invalidate(folderRepositoryProvider);
+                        ref.invalidate(foldersStreamProvider);
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('${folder.name} deleted'),
+                              behavior: SnackBarBehavior.floating,
+                              backgroundColor: AppTheme.accentPrimary.withOpacity(0.9),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              duration: const Duration(seconds: 2),
+                            ),
+                          );
+                        }
+                      } catch (e) {
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Error deleting folder: $e'),
+                              behavior: SnackBarBehavior.floating,
+                              backgroundColor: AppTheme.disturbingRed.withOpacity(0.9),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                          );
+                        }
+                      }
+                    },
+                    child: animatedItem,
                   );
                 }).toList(),
                 SizedBox(height: AppTheme.spacingS),
@@ -817,6 +836,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
                 if (deletedCount > 0) ...[
                   SizedBox(height: AppTheme.spacingS),
                   _buildDreamListItem(
+                    context: context,
                     icon: Icons.delete_outline_rounded,
                     title: 'Recently Deleted',
                     count: deletedCount,
@@ -829,164 +849,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
                 ],
               ],
             );
-          },
-          loading: () {
-            // Show default Dreams section while loading
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Dreams',
-                  style: AppTheme.headline(context),
-                ),
-                SizedBox(height: AppTheme.spacingS),
-                // Dreams folder (default)
-                _buildDreamFolderItem(
-                  icon: Icons.nightlight_round,
-                  title: 'Dreams',
-                  count: 0,
-                  color: const Color(0xFF9B59B6),
-                  onTap: () {
-                    HapticFeedback.selectionClick();
-                    setState(() {
-                      _selectedFolderId = 'Dreams';
-                      _showDreamList = true;
-                    });
-                  },
-                  onCreateTap: () {},
-                ),
-                SizedBox(height: AppTheme.spacingS),
-                // Create Folder button
-                ScaleAnimation(
-                  onTap: () {
-                    AppTheme.hapticFeedback(HapticFeedbackType.selectionClick);
-                    _showCreateFolderDialog(context, ref);
-                  },
-                  child: GlassSurface(
-                    borderRadius: AppTheme.radiusM,
-                    onTap: () {
-                      AppTheme.hapticFeedback(HapticFeedbackType.selectionClick);
-                      _showCreateFolderDialog(context, ref);
-                    },
-                    padding: EdgeInsets.all(AppTheme.spacingS),
-                    child: Row(
-                      children: [
-                        Container(
-                          padding: EdgeInsets.all(AppTheme.spacingS),
-                          decoration: BoxDecoration(
-                            color: AppTheme.glassOverlay.withOpacity(0.3),
-                            borderRadius: BorderRadius.circular(AppTheme.radiusS),
-                            border: Border.all(
-                              color: AppTheme.glassBorder.withOpacity(0.3),
-                              width: 1,
-                            ),
-                          ),
-                          child: Icon(
-                            Icons.create_new_folder_rounded,
-                            color: AppTheme.textPrimary,
-                            size: 22,
-                          ),
-                        ),
-                        SizedBox(width: AppTheme.spacingS),
-                        Expanded(
-                          child: Text(
-                            'Create Folder',
-                            style: AppTheme.callout(context).copyWith(
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                        Icon(
-                          Icons.chevron_right_rounded,
-                          color: AppTheme.textMuted.withOpacity(0.5),
-                          size: 18,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            );
-          },
-          error: (_, __) {
-            // Show default Dreams section on error
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Dreams',
-                  style: AppTheme.headline(context),
-                ),
-                SizedBox(height: AppTheme.spacingS),
-                // Dreams folder (default)
-                _buildDreamFolderItem(
-                  icon: Icons.nightlight_round,
-                  title: 'Dreams',
-                  count: 0,
-                  color: const Color(0xFF9B59B6),
-                  onTap: () {
-                    HapticFeedback.selectionClick();
-                    setState(() {
-                      _selectedFolderId = 'Dreams';
-                      _showDreamList = true;
-                    });
-                  },
-                  onCreateTap: () {},
-                ),
-                SizedBox(height: AppTheme.spacingS),
-                // Create Folder button
-                ScaleAnimation(
-                  onTap: () {
-                    AppTheme.hapticFeedback(HapticFeedbackType.selectionClick);
-                    _showCreateFolderDialog(context, ref);
-                  },
-                  child: GlassSurface(
-                    borderRadius: AppTheme.radiusM,
-                    onTap: () {
-                      AppTheme.hapticFeedback(HapticFeedbackType.selectionClick);
-                      _showCreateFolderDialog(context, ref);
-                    },
-                    padding: EdgeInsets.all(AppTheme.spacingS),
-                    child: Row(
-                      children: [
-                        Container(
-                          padding: EdgeInsets.all(AppTheme.spacingS),
-                          decoration: BoxDecoration(
-                            color: AppTheme.glassOverlay.withOpacity(0.3),
-                            borderRadius: BorderRadius.circular(AppTheme.radiusS),
-                            border: Border.all(
-                              color: AppTheme.glassBorder.withOpacity(0.3),
-                              width: 1,
-                            ),
-                          ),
-                          child: Icon(
-                            Icons.create_new_folder_rounded,
-                            color: AppTheme.textPrimary,
-                            size: 22,
-                          ),
-                        ),
-                        SizedBox(width: AppTheme.spacingS),
-                        Expanded(
-                          child: Text(
-                            'Create Folder',
-                            style: AppTheme.callout(context).copyWith(
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                        Icon(
-                          Icons.chevron_right_rounded,
-                          color: AppTheme.textMuted.withOpacity(0.5),
-                          size: 18,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            );
-          },
-        );
       },
       loading: () {
         // Show default Dreams section while folders are loading
@@ -1000,6 +862,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
             SizedBox(height: AppTheme.spacingS),
             // Dreams folder (default)
             _buildDreamFolderItem(
+              context: context,
               icon: Icons.nightlight_round,
               title: 'Dreams',
               count: 0,
@@ -1078,6 +941,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
             SizedBox(height: AppTheme.spacingS),
             // Dreams folder (default)
             _buildDreamFolderItem(
+              context: context,
               icon: Icons.nightlight_round,
               title: 'Dreams',
               count: 0,
@@ -1148,6 +1012,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
   }
 
   Widget _buildDreamFolderItem({
+    required BuildContext context,
     required IconData icon,
     required String title,
     required int count,
@@ -1227,6 +1092,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
   }
 
   Widget _buildDreamListItem({
+    required BuildContext context,
     required IconData icon,
     required String title,
     required int count,
@@ -1315,33 +1181,38 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
     );
   }
 
-  Widget _buildDreamListView(List<DreamEntry> dreams) {
+  Widget _buildDreamListView(List<DreamEntry> dreams, BuildContext context) {
     // Filter dreams by selected folder
     final filteredDreams = _selectedFolderId != null
         ? dreams.where((dream) => dream.folderId == _selectedFolderId).toList()
         : dreams;
     
-    // Get folder name if folder is selected
+    // Get folder name - use folders provider but don't block on it
     final foldersAsync = ref.watch(foldersStreamProvider);
+    String folderName = 'Dreams';
     
-    return foldersAsync.when(
-      data: (allFolders) {
-        String folderName = 'Dreams';
-        if (_selectedFolderId != null) {
-          final folder = allFolders.firstWhere(
-            (f) => f.id == _selectedFolderId,
-            orElse: () => Folder(
-              id: 'Dreams',
-              name: 'Dreams',
-              createdAt: DateTime.now(),
-              color: '#9B59B6',
-              icon: 'nightlight_round',
-            ),
-          );
-          folderName = folder.name;
-        }
-        
-        return GestureDetector(
+    // Get folder name synchronously if available, otherwise use default
+    final folders = foldersAsync.valueOrNull;
+    if (folders != null && _selectedFolderId != null) {
+      try {
+        final folder = folders.firstWhere(
+          (f) => f.id == _selectedFolderId,
+          orElse: () => Folder(
+            id: 'Dreams',
+            name: 'Dreams',
+            createdAt: DateTime.now(),
+            color: '#9B59B6',
+            icon: 'nightlight_round',
+          ),
+        );
+        folderName = folder.name;
+      } catch (e) {
+        // If folder not found, use default name
+        folderName = 'Dreams';
+      }
+    }
+    
+    return GestureDetector(
           onHorizontalDragEnd: (details) {
             // Swipe from left edge to go back
             if (details.primaryVelocity != null && details.primaryVelocity! > 500) {
@@ -1384,107 +1255,87 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
                             ),
                           ),
                         ),
-                      SizedBox(width: AppTheme.spacingS),
-                      // Title
-                      Expanded(
-                        child: Text(
-                          folderName,
-                          style: AppTheme.title(context),
+                        SizedBox(width: AppTheme.spacingS),
+                        // Title
+                        Expanded(
+                          child: Text(
+                            folderName,
+                            style: AppTheme.title(context),
+                          ),
                         ),
-                      ),
-                  // Search button
-                  ScaleAnimation(
-                    onTap: () {
-                      AppTheme.hapticFeedback(HapticFeedbackType.selectionClick);
-                      // TODO: Implement search
-                    },
-                    child: GlassSurface(
-                      borderRadius: AppTheme.radiusM,
-                      padding: EdgeInsets.all(AppTheme.spacingS),
-                      child: Icon(
-                        Icons.search_rounded,
-                        size: 20,
-                        color: AppTheme.textPrimary,
-                      ),
+                        // Search button
+                        ScaleAnimation(
+                          onTap: () {
+                            AppTheme.hapticFeedback(HapticFeedbackType.selectionClick);
+                            // TODO: Implement search
+                          },
+                          child: GlassSurface(
+                            borderRadius: AppTheme.radiusM,
+                            padding: EdgeInsets.all(AppTheme.spacingS),
+                            child: Icon(
+                              Icons.search_rounded,
+                              size: 20,
+                              color: AppTheme.textPrimary,
+                            ),
+                          ),
+                        ),
+                        SizedBox(width: AppTheme.spacingS),
+                        // Menu button
+                        ScaleAnimation(
+                          onTap: () {
+                            AppTheme.hapticFeedback(HapticFeedbackType.selectionClick);
+                            context.push('/settings');
+                          },
+                          child: GlassSurface(
+                            borderRadius: AppTheme.radiusM,
+                            padding: EdgeInsets.all(AppTheme.spacingS),
+                            child: Icon(
+                              Icons.more_vert_rounded,
+                              size: 20,
+                              color: AppTheme.textPrimary,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  SizedBox(width: AppTheme.spacingS),
-                  // Menu button
-                  ScaleAnimation(
-                    onTap: () {
-                      AppTheme.hapticFeedback(HapticFeedbackType.selectionClick);
-                      context.push('/settings');
-                    },
-                    child: GlassSurface(
-                      borderRadius: AppTheme.radiusM,
-                      padding: EdgeInsets.all(AppTheme.spacingS),
-                      child: Icon(
-                        Icons.more_vert_rounded,
-                        size: 20,
-                        color: AppTheme.textPrimary,
-                      ),
-                    ),
+                  // Dream list or empty state
+                  Expanded(
+                    child: filteredDreams.isEmpty
+                        ? _buildEmptyState(context)
+                        : ListView.builder(
+                            padding: EdgeInsets.symmetric(
+                              horizontal: AppTheme.spacingM,
+                              vertical: AppTheme.spacingS,
+                            ),
+                            itemCount: filteredDreams.length,
+                            itemBuilder: (context, index) => FadeSlideTransition(
+                              delay: Duration(milliseconds: 100 + (index * 50)),
+                              child: _buildDreamCard(filteredDreams[index], index, context),
+                            ),
+                          ),
                   ),
                 ],
               ),
             ),
-            // Dream list or empty state
-            Expanded(
-              child: filteredDreams.isEmpty
-                  ? _buildEmptyState(context)
-                  : ListView.builder(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: AppTheme.spacingM,
-                        vertical: AppTheme.spacingS,
-                      ),
-                      itemCount: filteredDreams.length,
-                      itemBuilder: (context, index) => FadeSlideTransition(
-                        delay: Duration(milliseconds: 100 + (index * 50)),
-                        child: _buildDreamCard(filteredDreams[index], index, context),
-                      ),
-                    ),
+            // Floating Action Button
+            floatingActionButton: GlassSurface(
+              borderRadius: AppTheme.radiusPill,
+              elevated: true,
+              onTap: () {
+                AppTheme.hapticFeedback(HapticFeedbackType.mediumImpact);
+                context.push('/add');
+              },
+              padding: EdgeInsets.all(AppTheme.spacingM),
+              child: Icon(
+                Icons.add_rounded,
+                color: AppTheme.textPrimary,
+                size: 28,
+              ),
             ),
-          ],
-        ),
-      ),
-      // Floating Action Button
-      floatingActionButton: GlassSurface(
-        borderRadius: AppTheme.radiusPill,
-        elevated: true,
-        onTap: () {
-          AppTheme.hapticFeedback(HapticFeedbackType.mediumImpact);
-          context.push('/add');
-        },
-        padding: EdgeInsets.all(AppTheme.spacingM),
-        child: Icon(
-          Icons.add_rounded,
-          color: AppTheme.textPrimary,
-          size: 28,
-        ),
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-        ),
-      );
-        },
-        loading: () => Scaffold(
-          backgroundColor: Colors.transparent,
-          body: Center(
-            child: CircularProgressIndicator(
-              color: AppTheme.accentPrimary,
-            ),
+            floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
           ),
-        ),
-        error: (_, __) => Scaffold(
-          backgroundColor: Colors.transparent,
-          body: Center(
-            child: Text(
-              'Error loading folder',
-              style: AppTheme.subheadline(context),
-            ),
-          ),
-        ),
-      );
-    }
+        );
   }
 
   Widget _buildDreamCard(DreamEntry dream, int index, BuildContext context) {
@@ -1790,20 +1641,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
     IconData selectedIcon = availableIcons[0];
     Color selectedColor = availableColors[0];
     
-    showDialog(
+    AnimatedDialog.show(
       context: dialogContext,
       barrierColor: Colors.black.withOpacity(0.7),
-      builder: (dialogBuilderContext) => StatefulBuilder(
-        builder: (dialogBuilderContext, setDialogState) => Dialog(
-          backgroundColor: Colors.transparent,
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(24),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
-              child: Container(
-                padding: const EdgeInsets.all(24),
-                decoration: AppTheme.glassContainer(borderRadius: 24),
-                child: SingleChildScrollView(
+      child: StatefulBuilder(
+        builder: (dialogBuilderContext, setDialogState) => SingleChildScrollView(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -1945,7 +1787,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
                           TextButton(
                             onPressed: () {
                               HapticFeedback.selectionClick();
-                              Navigator.of(dialogBuilderContext).pop();
+                              Navigator.of(dialogContext).pop();
                             },
                             child: Text(
                               'Cancel',
@@ -1985,15 +1827,27 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
                                           // Access ref from captured state - FutureProvider needs .future
                                           final folderRepo = await stateRef.read(folderRepositoryProvider.future);
                                           
-                                          // Convert icon to string name
+                                          // Convert icon to string name using a proper mapping
                                           String iconName = 'folder_rounded';
-                                          final iconIndex = availableIcons.indexOf(selectedIcon);
-                                          if (iconIndex >= 0) {
-                                            iconName = availableIcons[iconIndex].toString().split('.').last;
-                                          }
+                                          // Map IconData to string names
+                                          final iconMap = {
+                                            Icons.folder_rounded: 'folder_rounded',
+                                            Icons.folder_special_rounded: 'folder_special_rounded',
+                                            Icons.bookmark_rounded: 'bookmark_rounded',
+                                            Icons.star_rounded: 'star_rounded',
+                                            Icons.favorite_rounded: 'favorite_rounded',
+                                            Icons.work_rounded: 'work_rounded',
+                                            Icons.home_rounded: 'home_rounded',
+                                            Icons.school_rounded: 'school_rounded',
+                                            Icons.flight_rounded: 'flight_rounded',
+                                            Icons.restaurant_rounded: 'restaurant_rounded',
+                                            Icons.music_note_rounded: 'music_note_rounded',
+                                            Icons.movie_rounded: 'movie_rounded',
+                                          };
+                                          iconName = iconMap[selectedIcon] ?? 'folder_rounded';
                                           
-                                          // Convert color to hex
-                                          String colorHex = '#${selectedColor.value.toRadixString(16).substring(2)}';
+                                          // Convert color to hex (ensure uppercase and proper format)
+                                          String colorHex = '#${selectedColor.value.toRadixString(16).substring(2).toUpperCase()}';
                                           
                                           final folder = Folder(
                                             id: const Uuid().v4(),
@@ -2002,14 +1856,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
                                             color: colorHex,
                                             icon: iconName,
                                           );
+                                          
+                                          // Create folder with error logging
+                                          debugPrint('Creating folder: ${folder.name} with id: ${folder.id}');
                                           await folderRepo.createFolder(folder);
+                                          debugPrint('Folder created successfully: ${folder.id}');
+                                          
                                           // Use context to check if widget is still mounted
-                                          if (dialogBuilderContext.mounted) {
-                                            Navigator.of(dialogBuilderContext).pop();
-                                            // Refresh folder list by invalidating stream provider
+                                          if (dialogContext.mounted) {
+                                            Navigator.of(dialogContext).pop();
+                                            // Refresh folder list by invalidating both providers
+                                            stateRef.invalidate(folderRepositoryProvider);
                                             stateRef.invalidate(foldersStreamProvider);
-                                            // Wait a bit for the provider to refresh
-                                            await Future.delayed(const Duration(milliseconds: 200));
+                                            // Wait a bit for the provider to refresh and Hive to update
+                                            await Future.delayed(const Duration(milliseconds: 300));
                                             // Show success message
                                             if (dialogContext.mounted) {
                                               ScaffoldMessenger.of(dialogContext).showSnackBar(
@@ -2020,20 +1880,25 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
                                                   shape: RoundedRectangleBorder(
                                                     borderRadius: BorderRadius.circular(12),
                                                   ),
+                                                  duration: const Duration(seconds: 2),
                                                 ),
                                               );
                                             }
                                           }
-                                        } catch (e) {
+                                        } catch (e, stackTrace) {
+                                          // Log error with stack trace for debugging
+                                          debugPrint('Error creating folder: $e');
+                                          debugPrint('Stack trace: $stackTrace');
                                           if (dialogBuilderContext.mounted) {
                                             ScaffoldMessenger.of(dialogContext).showSnackBar(
                                               SnackBar(
-                                                content: Text('Error creating folder: $e'),
+                                                content: Text('Error creating folder: ${e.toString()}'),
                                                 behavior: SnackBarBehavior.floating,
                                                 backgroundColor: AppTheme.disturbingRed.withOpacity(0.9),
                                                 shape: RoundedRectangleBorder(
                                                   borderRadius: BorderRadius.circular(12),
                                                 ),
+                                                duration: const Duration(seconds: 4),
                                               ),
                                             );
                                           }
@@ -2060,11 +1925,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
                       ),
                     ],
                   ),
-                ),
-              ),
-            ),
-          ),
         ),
       ),
     );
   }
+}
